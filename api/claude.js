@@ -11,6 +11,12 @@ export default async function handler(req, res) {
   }
 
   try {
+    const body = {
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 3000,
+      messages: req.body.messages
+    };
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -18,7 +24,7 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01',
         'x-api-key': apiKey
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(body)
     });
     const data = await response.json();
     res.status(200).json(data);
