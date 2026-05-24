@@ -335,9 +335,19 @@ ${affLinks()}`;
     if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
     if (!data.content || !data.content.length) throw new Error('No content in response: ' + rawText.slice(0, 200));
     const text = data.content.map(i => i.text || '').join('');
-    const clean = text.replace(/```json|```/g, '').trim();
     let parsed;
-    try { parsed = JSON.parse(clean); } catch(e) { throw new Error('Could not parse AI response as JSON'); }
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(clean);
+    } catch(e) {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { parsed = JSON.parse(match[0]); }
+        catch(e2) { throw new Error('Could not parse AI response as JSON'); }
+      } else {
+        throw new Error('Could not parse AI response as JSON');
+      }
+    }
     return { ...parsed, destination: d, contentType: t };
   };
 
