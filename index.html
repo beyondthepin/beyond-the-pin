@@ -830,7 +830,6 @@ function VideoStudio({ queue, published, elevenKey, pexelsKey, setPage }) {
   };
 
   const generateVoiceover = async () => {
-    if (!elevenKey) { setError('Add your ElevenLabs API key in Settings first.'); return; }
     if (!selected) return;
     setGeneratingVoice(true);
     setError('');
