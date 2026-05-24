@@ -326,9 +326,18 @@ ${affLinks()}`;
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true', 'anthropic-version': '2023-06-01' },
+      headers: { 
+        'Content-Type': 'application/json', 
+        'anthropic-dangerous-direct-browser-access': 'true', 
+        'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey
+      },
       body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] })
     });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `API error: ${res.status}`);
+    }
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
     const text = data.content.map(i => i.text || '').join('');
