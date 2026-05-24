@@ -121,12 +121,16 @@ const {useState, useEffect} = React;
 function App() {
   const [page, setPage] = useState('dashboard');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('btp_api') || '');
+  const [elevenKey, setElevenKey] = useState(() => localStorage.getItem('btp_eleven') || '');
+  const [pexelsKey, setPexelsKey] = useState(() => localStorage.getItem('btp_pexels') || '');
   const [queue, setQueue] = useState(() => { try { return JSON.parse(localStorage.getItem('btp_q') || '[]'); } catch { return []; } });
   const [published, setPublished] = useState(() => { try { return JSON.parse(localStorage.getItem('btp_pub') || '[]'); } catch { return []; } });
   const [affiliates, setAffiliates] = useState(() => { try { return JSON.parse(localStorage.getItem('btp_aff') || '{}'); } catch { return {}; } });
   const [platforms, setPlatforms] = useState(() => { try { return JSON.parse(localStorage.getItem('btp_plt') || '{}'); } catch { return {}; } });
 
   useEffect(() => { localStorage.setItem('btp_api', apiKey); }, [apiKey]);
+  useEffect(() => { localStorage.setItem('btp_eleven', elevenKey); }, [elevenKey]);
+  useEffect(() => { localStorage.setItem('btp_pexels', pexelsKey); }, [pexelsKey]);
   useEffect(() => { localStorage.setItem('btp_q', JSON.stringify(queue)); }, [queue]);
   useEffect(() => { localStorage.setItem('btp_pub', JSON.stringify(published)); }, [published]);
   useEffect(() => { localStorage.setItem('btp_aff', JSON.stringify(affiliates)); }, [affiliates]);
@@ -150,16 +154,18 @@ function App() {
     { id: 'queue', icon: '◎', label: 'Approval Queue', badge: pending },
     { id: 'calendar', icon: '▦', label: 'Content Calendar' },
     { id: 'monetization', icon: '◆', label: 'Monetization' },
+    { id: 'video', icon: '▶', label: 'Video Studio' },
     { id: 'settings', icon: '◉', label: 'Settings' },
   ];
 
-  const pages = { dashboard: Dashboard, generate: Generate, queue: QueuePage, calendar: CalendarPage, monetization: Monetization, settings: SettingsPage };
+  const pages = { dashboard: Dashboard, generate: Generate, queue: QueuePage, calendar: CalendarPage, monetization: Monetization, video: VideoStudio, settings: SettingsPage };
   const Page = pages[page] || Dashboard;
   const mobNav = [
     {id:'dashboard',icon:'◈',label:'Home'},
     {id:'generate',icon:'✦',label:'Create'},
     {id:'queue',icon:'◎',label:'Queue',badge:pending},
     {id:'monetization',icon:'◆',label:'Money'},
+    {id:'video',icon:'▶',label:'Video'},
     {id:'settings',icon:'◉',label:'Settings'},
   ];
 
@@ -191,6 +197,7 @@ function App() {
         </div>
         <Page queue={queue} published={published} affiliates={affiliates} setAffiliates={setAffiliates}
           platforms={platforms} setPlatforms={setPlatforms} apiKey={apiKey} setApiKey={setApiKey}
+          elevenKey={elevenKey} setElevenKey={setElevenKey} pexelsKey={pexelsKey} setPexelsKey={setPexelsKey}
           approve={approve} reject={reject} editItem={editItem} addToQueue={addToQueue} setPage={setPage} />
       </main>
       <nav className="mob-nav">
@@ -714,12 +721,14 @@ const PLTS = [
   {id:'fb',name:'Facebook',icon:'⬡',color:'#7b9fe0',fields:[{k:'fb_page_id',l:'Page ID',p:'Your Facebook Page ID'},{k:'fb_access_token',l:'Page Access Token',p:'From developers.facebook.com'}],url:'https://developers.facebook.com',steps:['Same app as Instagram (Meta)','Add Pages API to your app','Get Page ID from FB Page settings','Generate a Page Access Token']},
 ];
 
-function SettingsPage({ apiKey, setApiKey, platforms, setPlatforms }) {
+function SettingsPage({ apiKey, setApiKey, platforms, setPlatforms, elevenKey, setElevenKey, pexelsKey, setPexelsKey }) {
   const [lk, setLk] = useState(apiKey);
   const [lp, setLp] = useState(platforms);
   const [saved, setSaved] = useState(false);
   const [show, setShow] = useState(false);
-  const save = () => { setApiKey(lk); setPlatforms(lp); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const [lEleven, setLEleven] = useState(elevenKey);
+  const [lPexels, setLPexels] = useState(pexelsKey);
+  const save = () => { setApiKey(lk); setPlatforms(lp); setElevenKey(lEleven); setPexelsKey(lPexels); setSaved(true); setTimeout(() => setSaved(false), 2000); };
   const conn = (p) => p.fields.every(f => lp[f.k] && lp[f.k].trim());
 
   return (
@@ -767,8 +776,165 @@ function SettingsPage({ apiKey, setApiKey, platforms, setPlatforms }) {
           </div>
         </div>
       ))}
+      <div className="card" style={{marginBottom:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div><div style={{fontFamily:'Playfair Display,serif',fontSize:18,marginBottom:4}}>ElevenLabs API Key</div><div style={{fontSize:13,color:'var(--ts)'}}>Powers AI voiceover generation for videos.</div></div>
+          {lEleven?<span className="stbd sap">✓ Connected</span>:<span className="stbd spn">Not Set</span>}
+        </div>
+        <div className="ib" style={{marginBottom:12}}>Get your key at <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" style={{color:'var(--acc)'}}>elevenlabs.io</a> → Profile → API Keys</div>
+        <input className="inp" type="password" placeholder="Your ElevenLabs API key" value={lEleven} onChange={e=>setLEleven(e.target.value)}/>
+      </div>
+      <div className="card" style={{marginBottom:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div><div style={{fontFamily:'Playfair Display,serif',fontSize:18,marginBottom:4}}>Pexels API Key</div><div style={{fontSize:13,color:'var(--ts)'}}>Powers free stock travel footage search.</div></div>
+          {lPexels?<span className="stbd sap">✓ Connected</span>:<span className="stbd spn">Not Set</span>}
+        </div>
+        <div className="ib" style={{marginBottom:12}}>Get your key at <a href="https://pexels.com/api" target="_blank" rel="noopener noreferrer" style={{color:'var(--acc)'}}>pexels.com/api</a> → Your API Key</div>
+        <input className="inp" type="password" placeholder="Your Pexels API key" value={lPexels} onChange={e=>setLPexels(e.target.value)}/>
+      </div>
       <button className="btn bp blg" onClick={save}>{saved ? '✓ All Settings Saved!' : 'Save All Settings'}</button>
       {saved && <span style={{marginLeft:12,fontSize:13,color:'var(--grn)'}}>Saved successfully.</span>}
+    </div>
+  );
+}
+
+function VideoStudio({ queue, published, elevenKey, pexelsKey, setPage }) {
+  const approved = published || [];
+  const [selectedId, setSelectedId] = useState(null);
+  const [footage, setFootage] = useState([]);
+  const [loadingFootage, setLoadingFootage] = useState(false);
+  const [generatingVoice, setGeneratingVoice] = useState(false);
+  const [voiceReady, setVoiceReady] = useState(false);
+  const [error, setError] = useState('');
+  const [step, setStep] = useState(1);
+
+  const selected = approved.find(a => a.id === selectedId);
+
+  const searchFootage = async () => {
+    if (!pexelsKey) { setError('Add your Pexels API key in Settings first.'); return; }
+    if (!selected) return;
+    setLoadingFootage(true);
+    setError('');
+    try {
+      const query = selected.destination || 'travel';
+      const res = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=6&orientation=landscape`, {
+        headers: { Authorization: pexelsKey }
+      });
+      const data = await res.json();
+      setFootage(data.videos || []);
+      setStep(2);
+    } catch(e) {
+      setError('Could not fetch footage: ' + e.message);
+    }
+    setLoadingFootage(false);
+  };
+
+  const generateVoiceover = async () => {
+    if (!elevenKey) { setError('Add your ElevenLabs API key in Settings first.'); return; }
+    if (!selected) return;
+    setGeneratingVoice(true);
+    setError('');
+    try {
+      const script = selected.youtube_script || selected.hook || '';
+      const res = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': elevenKey },
+        body: JSON.stringify({ text: script.slice(0, 2500), model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+      });
+      if (!res.ok) throw new Error('ElevenLabs error: ' + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selected.title || 'voiceover'}.mp3`;
+      a.click();
+      setVoiceReady(true);
+      setStep(3);
+    } catch(e) {
+      setError('Voiceover failed: ' + e.message);
+    }
+    setGeneratingVoice(false);
+  };
+
+  return (
+    <div className="fi">
+      <div className="ph"><h1>Video Studio</h1><p>Turn approved scripts into voiceover + footage — ready to assemble.</p></div>
+      {!elevenKey || !pexelsKey ? (
+        <div className="ib">⚠ Add your <strong>ElevenLabs</strong> and <strong>Pexels</strong> API keys in Settings first. <button className="btn bg2b bsm" style={{marginLeft:8}} onClick={()=>setPage('settings')}>Settings →</button></div>
+      ) : null}
+      {error && <div style={{background:'rgba(224,92,92,.1)',border:'1px solid rgba(224,92,92,.2)',borderRadius:8,padding:'12px 16px',marginBottom:20,fontSize:14,color:'var(--red)'}}>{error}</div>}
+
+      <div style={{display:'flex',gap:8,marginBottom:8}}>
+        {['1. Select Content','2. Get Footage','3. Get Voiceover'].map((s,i)=>(
+          <div key={i} style={{flex:1,padding:'8px 12px',borderRadius:8,background:step>i?'var(--accd)':'var(--bgc)',border:`1px solid ${step>i?'var(--acc)':'var(--bds)'}`,fontSize:12,color:step>i?'var(--acc)':'var(--ts)',textAlign:'center'}}>{s}</div>
+        ))}
+      </div>
+
+      <div className="dvd"/>
+
+      <div className="card" style={{marginBottom:16}}>
+        <div className="stl" style={{fontSize:16,marginBottom:12}}>Select Approved Content</div>
+        {approved.length === 0 ? (
+          <div className="es" style={{padding:'24px 0'}}><div className="ei">◎</div><h3>No approved content yet</h3><p>Approve content in the queue first.</p><button className="btn bp bsm" onClick={()=>setPage('queue')}>Go to Queue →</button></div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {approved.map(item=>(
+              <div key={item.id} onClick={()=>{setSelectedId(item.id);setStep(1);setFootage([]);setVoiceReady(false);}} style={{padding:'12px 16px',borderRadius:8,cursor:'pointer',background:selectedId===item.id?'var(--accd)':'var(--bg)',border:`1px solid ${selectedId===item.id?'var(--acc)':'var(--bds)'}`,transition:'all .15s'}}>
+                <div style={{fontWeight:600,fontSize:14}}>{item.title}</div>
+                <div style={{fontSize:12,color:'var(--ts)',marginTop:2}}>{item.destination}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selected && (
+        <>
+          <div className="card" style={{marginBottom:16}}>
+            <div className="stl" style={{fontSize:16,marginBottom:8}}>Step 2 — Get Stock Footage</div>
+            <p style={{fontSize:13,color:'var(--ts)',marginBottom:16}}>Searches Pexels for travel footage matching <strong>{selected.destination}</strong>. Free, no watermarks.</p>
+            <button className="btn bp" onClick={searchFootage} disabled={loadingFootage}>
+              {loadingFootage?<><span className="ring"/> Searching...</>:'Search Travel Footage'}
+            </button>
+            {footage.length > 0 && (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:12,marginTop:16}}>
+                {footage.map(v=>(
+                  <div key={v.id} style={{borderRadius:8,overflow:'hidden',border:'1px solid var(--bds)'}}>
+                    <video src={v.video_files?.[0]?.link} poster={v.image} style={{width:'100%',height:120,objectFit:'cover'}} muted controls/>
+                    <div style={{padding:'8px 10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <span style={{fontSize:11,color:'var(--ts)'}}>{Math.round(v.duration)}s</span>
+                      <a href={v.video_files?.[0]?.link} download className="btn bp bsm">Download</a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card" style={{marginBottom:16}}>
+            <div className="stl" style={{fontSize:16,marginBottom:8}}>Step 3 — Generate Voiceover</div>
+            <p style={{fontSize:13,color:'var(--ts)',marginBottom:16}}>Sends your script to ElevenLabs AI → downloads as MP3. Professional travel narrator voice.</p>
+            <button className="btn bp" onClick={generateVoiceover} disabled={generatingVoice}>
+              {generatingVoice?<><span className="ring"/> Generating voiceover...</>:'Generate & Download Voiceover'}
+            </button>
+            {voiceReady && (
+              <div style={{marginTop:16,padding:12,background:'var(--accd)',borderRadius:8,border:'1px solid var(--bdr)',fontSize:13,color:'var(--accl)'}}>
+                ✓ Voiceover downloaded! Now combine it with your footage in CapCut (free) and upload to YouTube.
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="stl" style={{fontSize:16,marginBottom:8}}>Step 4 — Assemble & Upload</div>
+            <div style={{display:'flex',flexDirection:'column',gap:8,fontSize:13,color:'var(--ts)'}}>
+              <div style={{padding:'10px 12px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bds)'}}>1. Open <strong style={{color:'var(--tp)'}}>CapCut</strong> (free desktop app) → drag in your footage clips</div>
+              <div style={{padding:'10px 12px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bds)'}}>2. Drag in your voiceover MP3 as the audio track</div>
+              <div style={{padding:'10px 12px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bds)'}}>3. Export as MP4 → upload to YouTube with the pre-written title, description & tags</div>
+              <div style={{padding:'10px 12px',background:'var(--accd)',borderRadius:8,border:'1px solid var(--bdr)',color:'var(--accl)'}}>⚡ Once your server is ready, this step becomes fully automatic.</div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
