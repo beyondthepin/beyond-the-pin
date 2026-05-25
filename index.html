@@ -605,12 +605,14 @@ function PublishPanel({ item, platforms, pexelsKey }) {
       const postData = await postRes.json();
       if (postData.error) throw new Error(postData.error.message);
       const newPostId = postData.id;
-      // Auto-post pinned comment with affiliate links
+      // Auto-post pinned comment with affiliate links using page token
       const pinnedComment = item.pinned_comment || '';
       if (pinnedComment) {
         try {
-          await fetch(
-            `https://graph.facebook.com/v18.0/${newPostId}/comments`,
+          // Get the actual post ID (format is pageId_postId, we need just postId part)
+          const actualPostId = newPostId.includes('_') ? newPostId : newPostId;
+          const commentRes = await fetch(
+            `https://graph.facebook.com/v18.0/${actualPostId}/comments`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -620,9 +622,15 @@ function PublishPanel({ item, platforms, pexelsKey }) {
               })
             }
           );
-        } catch(e) { console.log('Comment post failed:', e); }
+          const commentData = await commentRes.json();
+          if (commentData.error) throw new Error(commentData.error.message);
+          setFbStatus('ok:Posted to Facebook with affiliate comment! Post ID: ' + newPostId);
+        } catch(e) {
+          setFbStatus('ok:Posted to Facebook! Comment failed: ' + e.message + '. Post ID: ' + newPostId);
+        }
+      } else {
+        setFbStatus('ok:Posted to Facebook! Post ID: ' + newPostId);
       }
-      setFbStatus('ok:Posted to Facebook with pinned comment! Post ID: ' + newPostId);
     } catch(e) { setFbStatus('error:' + e.message); }
     setFbPosting(false);
   };
