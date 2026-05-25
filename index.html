@@ -44,6 +44,8 @@ h1,h2,h3{font-family:'Playfair Display',serif}
 .bg2b{background:transparent;color:var(--ts);border:1px solid var(--bds)}.bg2b:hover{background:var(--bgh);color:var(--tp)}
 .bd{background:rgba(224,92,92,.15);color:var(--red);border:1px solid rgba(224,92,92,.2)}
 .bsc{background:rgba(76,175,130,.15);color:var(--grn);border:1px solid rgba(76,175,130,.2)}
+.big2{background:rgba(225,48,108,.15);color:#e1306c;border:1px solid rgba(225,48,108,.2)}
+.bfb2{background:rgba(66,103,178,.15);color:#7b9fe0;border:1px solid rgba(66,103,178,.2)}
 .bsm{padding:6px 14px!important;font-size:12px!important}
 .blg{padding:14px 28px;font-size:15px}
 .btn:disabled{opacity:.4;cursor:not-allowed}
@@ -91,6 +93,14 @@ textarea.inp{resize:vertical;min-height:100px;line-height:1.6}
 ::-webkit-scrollbar-thumb{background:var(--td);border-radius:3px}
 .mob-header{display:none}
 .mob-nav{display:none}
+.pub-panel{background:var(--bg);border:1px solid var(--bdr);border-radius:10px;padding:16px;margin-top:16px}
+.pub-panel-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--acc);margin-bottom:12px}
+.img-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.img-thumb{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:pointer;border:2px solid transparent;transition:all .15s}
+.img-thumb.selected{border-color:var(--acc);box-shadow:0 0 0 2px var(--accd)}
+.pub-status{font-size:12px;padding:8px 12px;border-radius:6px;margin-top:8px}
+.pub-ok{background:rgba(76,175,130,.15);color:var(--grn);border:1px solid rgba(76,175,130,.2)}
+.pub-err{background:rgba(224,92,92,.1);color:var(--red);border:1px solid rgba(224,92,92,.2)}
 @media(max-width:768px){
   .sidebar{display:none}
   .main{margin-left:0;padding:16px;padding-bottom:calc(var(--bnav) + 16px);max-width:100%}
@@ -99,7 +109,6 @@ textarea.inp{resize:vertical;min-height:100px;line-height:1.6}
   .ph h1{font-size:24px}
   .mob-header{display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg2);border-bottom:1px solid var(--bds);margin:-16px -16px 24px -16px;position:sticky;top:0;z-index:50}
   .mob-header .lm{font-size:16px}
-  .mob-header .sdot-wrap{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ts)}
   .mob-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--bds);z-index:100;height:var(--bnav);padding-bottom:env(safe-area-inset-bottom)}
   .mob-ni{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border:none;background:none;color:var(--ts);font-size:9px;font-family:'DM Sans',sans-serif;font-weight:500;padding:8px 4px;-webkit-tap-highlight-color:transparent;position:relative}
   .mob-ni.active{color:var(--acc)}
@@ -110,6 +119,7 @@ textarea.inp{resize:vertical;min-height:100px;line-height:1.6}
   .bsm{padding:10px 14px!important;font-size:13px!important}
   .card{padding:16px}
   .cc{padding:16px}
+  .img-grid{grid-template-columns:repeat(2,1fr)}
 }
 </style>
 </head>
@@ -255,7 +265,7 @@ function Dashboard({ queue, published, setPage }) {
             <button className="btn bs" onClick={() => setPage('monetization')}>◆ Monetization</button>
           </div>
           <div className="dvd" />
-          <div className="ib"><strong>Getting Started:</strong> Go to Settings → add your Claude API key → Generate your first content.</div>
+          <div className="ib"><strong>Workflow:</strong> Generate → Approve → Pick image → Post to Instagram &amp; Facebook instantly.</div>
         </div>
         <div className="card">
           <div className="stl" style={{fontSize:16,marginBottom:16}}>Platform Status</div>
@@ -331,10 +341,15 @@ Respond ONLY with valid JSON, no markdown, no extra text:
 Affiliate links to embed naturally:
 ${affLinks()}`;
 
-    const res = await fetch('/api/claude', {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-3-5-sonnet-20241022', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] })
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] })
     });
     const rawText = await res.text();
     let data;
@@ -480,20 +495,154 @@ ${affLinks()}`;
   );
 }
 
-function QueuePage({ queue, approve, reject, editItem }) {
+// ── PUBLISH PANEL ─────────────────────────────────────────────────────────────
+function PublishPanel({ item, platforms, pexelsKey }) {
+  const [images, setImages] = useState([]);
+  const [loadingImgs, setLoadingImgs] = useState(false);
+  const [selectedImg, setSelectedImg] = useState(null);
+  const [igStatus, setIgStatus] = useState('');
+  const [fbStatus, setFbStatus] = useState('');
+  const [igPosting, setIgPosting] = useState(false);
+  const [fbPosting, setFbPosting] = useState(false);
+  const [imgError, setImgError] = useState('');
+
+  const igReady = platforms.ig_access_token && platforms.ig_user_id;
+  const fbReady = platforms.fb_access_token && platforms.fb_page_id;
+  const pexReady = !!pexelsKey;
+
+  const searchImages = async () => {
+    if (!pexelsKey) { setImgError('Add Pexels API key in Settings.'); return; }
+    setLoadingImgs(true); setImgError(''); setImages([]);
+    try {
+      const q = item.destination || 'travel landscape';
+      const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(q)}&per_page=9&orientation=landscape`, {
+        headers: { Authorization: pexelsKey }
+      });
+      const data = await res.json();
+      setImages(data.photos || []);
+    } catch(e) { setImgError('Could not load images: ' + e.message); }
+    setLoadingImgs(false);
+  };
+
+  const postToInstagram = async () => {
+    if (!selectedImg) { setIgStatus('error:Pick an image first.'); return; }
+    if (!igReady) { setIgStatus('error:Add Instagram credentials in Settings.'); return; }
+    setIgPosting(true); setIgStatus('posting');
+    try {
+      const caption = item.instagram_caption || item.hook || '';
+      const imageUrl = selectedImg.src.large;
+      // Step 1: Create media container
+      const createRes = await fetch(
+        `https://graph.facebook.com/v18.0/${platforms.ig_user_id}/media?image_url=${encodeURIComponent(imageUrl)}&caption=${encodeURIComponent(caption)}&access_token=${platforms.ig_access_token}`,
+        { method: 'POST' }
+      );
+      const createData = await createRes.json();
+      if (createData.error) throw new Error(createData.error.message);
+      const containerId = createData.id;
+      // Step 2: Publish container
+      const pubRes = await fetch(
+        `https://graph.facebook.com/v18.0/${platforms.ig_user_id}/media_publish?creation_id=${containerId}&access_token=${platforms.ig_access_token}`,
+        { method: 'POST' }
+      );
+      const pubData = await pubRes.json();
+      if (pubData.error) throw new Error(pubData.error.message);
+      setIgStatus('ok:Posted to Instagram! Post ID: ' + pubData.id);
+    } catch(e) { setIgStatus('error:' + e.message); }
+    setIgPosting(false);
+  };
+
+  const postToFacebook = async () => {
+    if (!selectedImg) { setFbStatus('error:Pick an image first.'); return; }
+    if (!fbReady) { setFbStatus('error:Add Facebook credentials in Settings.'); return; }
+    setFbPosting(true); setFbStatus('posting');
+    try {
+      const caption = item.facebook_caption || item.hook || '';
+      const imageUrl = selectedImg.src.large;
+      const res = await fetch(
+        `https://graph.facebook.com/v18.0/${platforms.fb_page_id}/photos`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: imageUrl, caption, access_token: platforms.fb_access_token })
+        }
+      );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      setFbStatus('ok:Posted to Facebook! Post ID: ' + data.post_id);
+    } catch(e) { setFbStatus('error:' + e.message); }
+    setFbPosting(false);
+  };
+
+  const statusEl = (s, posting) => {
+    if (posting) return <div className="pub-status" style={{background:'var(--accd)',color:'var(--acc)',border:'1px solid var(--bdr)'}}><span className="ring" style={{width:14,height:14,borderWidth:2,marginRight:8}}/>Posting...</div>;
+    if (!s) return null;
+    if (s === 'posting') return null;
+    const [type, msg] = s.split(/:(.+)/);
+    return <div className={`pub-status ${type === 'ok' ? 'pub-ok' : 'pub-err'}`}>{type === 'ok' ? '✓ ' : '✕ '}{msg}</div>;
+  };
+
+  return (
+    <div className="pub-panel">
+      <div className="pub-panel-title">◎ Publish to Social</div>
+
+      {/* Image picker */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:12,color:'var(--ts)',marginBottom:8}}>1. Pick a photo for the post</div>
+        {!pexReady && <div style={{fontSize:12,color:'var(--red)',marginBottom:8}}>Add Pexels API key in Settings to search images.</div>}
+        <button className="btn bs bsm" onClick={searchImages} disabled={loadingImgs || !pexReady}>
+          {loadingImgs ? <><span className="ring" style={{width:14,height:14,borderWidth:2}}/>Loading...</> : '🔍 Search Travel Photos'}
+        </button>
+        {imgError && <div style={{fontSize:12,color:'var(--red)',marginTop:6}}>{imgError}</div>}
+        {images.length > 0 && (
+          <div className="img-grid">
+            {images.map(img => (
+              <img key={img.id} src={img.src.medium} alt={img.alt}
+                className={`img-thumb ${selectedImg?.id === img.id ? 'selected' : ''}`}
+                onClick={() => setSelectedImg(img)} />
+            ))}
+          </div>
+        )}
+        {selectedImg && <div style={{fontSize:11,color:'var(--grn)',marginTop:4}}>✓ Photo selected — {selectedImg.photographer}</div>}
+      </div>
+
+      {/* Post buttons */}
+      <div style={{fontSize:12,color:'var(--ts)',marginBottom:8}}>2. Post to platforms</div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <button className="btn big2 bsm" onClick={postToInstagram} disabled={igPosting || !selectedImg}>
+          {igPosting ? <><span className="ring" style={{width:14,height:14,borderWidth:2}}/>Posting...</> : '◎ Post to Instagram'}
+        </button>
+        <button className="btn bfb2 bsm" onClick={postToFacebook} disabled={fbPosting || !selectedImg}>
+          {fbPosting ? <><span className="ring" style={{width:14,height:14,borderWidth:2}}/>Posting...</> : '⬡ Post to Facebook'}
+        </button>
+      </div>
+      {statusEl(igStatus, igPosting)}
+      {statusEl(fbStatus, fbPosting)}
+      {!igReady && <div style={{fontSize:11,color:'var(--td)',marginTop:6}}>Instagram: add App ID, App Secret, Access Token, User ID in Settings.</div>}
+      {!fbReady && <div style={{fontSize:11,color:'var(--td)',marginTop:4}}>Facebook: add Page ID and Page Access Token in Settings.</div>}
+    </div>
+  );
+}
+
+function QueuePage({ queue, approve, reject, editItem, platforms, pexelsKey }) {
   const [expanded, setExpanded] = useState(null);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState({});
   const [activeTab, setActiveTab] = useState('script');
   const [filter, setFilter] = useState('pending');
+  const [publishing, setPublishing] = useState(null);
   const filtered = queue.filter(q => filter === 'all' ? true : q.status === filter);
   const pending = queue.filter(q => q.status === 'pending').length;
   const tabs = [{id:'script',l:'YT Script'},{id:'desc',l:'YT Desc'},{id:'ig',l:'Instagram'},{id:'tt',l:'TikTok'},{id:'fb',l:'Facebook'},{id:'broll',l:'B-Roll'},{id:'eng',l:'Engagement'}];
 
+  const handleApprove = (id) => {
+    approve(id);
+    setPublishing(id);
+  };
+
   return (
     <div className="fi">
-      <div className="ph"><h1>Approval Queue</h1><p>Review, edit, approve or reject before anything publishes.</p></div>
-      {pending > 0 && <div className="ib" style={{marginBottom:24}}>✦ <strong>{pending} piece{pending > 1 ? 's' : ''}</strong> waiting for your approval. Nothing publishes until you sign off.</div>}
+      <div className="ph"><h1>Approval Queue</h1><p>Review, approve, then post directly to Instagram &amp; Facebook.</p></div>
+      {pending > 0 && <div className="ib" style={{marginBottom:24}}>✦ <strong>{pending} piece{pending > 1 ? 's' : ''}</strong> waiting for your approval. Approve → pick a photo → post instantly.</div>}
       <div style={{display:'flex',gap:8,marginBottom:24}}>
         {['pending','rejected','all'].map(f => <button key={f} className={`btn ${filter === f ? 'bp' : 'bg2b'} bsm`} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}{f === 'pending' && pending > 0 && ` (${pending})`}</button>)}
       </div>
@@ -539,9 +688,13 @@ function QueuePage({ queue, approve, reject, editItem }) {
               )}
             </div>
           )}
+          {/* Publish panel for approved items */}
+          {item.status === 'approved' && (
+            <PublishPanel item={item} platforms={platforms} pexelsKey={pexelsKey} />
+          )}
           {item.status === 'pending' && (
             <div className="ca">
-              <button className="btn bsc" onClick={() => approve(item.id)}>✓ Approve</button>
+              <button className="btn bsc" onClick={() => { approve(item.id); setExpanded(item.id); }}>✓ Approve & Publish</button>
               <button className="btn bs" onClick={() => { setEditing(item.id); setDraft({...item}); setExpanded(item.id); }}>✎ Edit</button>
               <button className="btn bd" onClick={() => reject(item.id)}>✕ Reject</button>
             </div>
@@ -786,7 +939,7 @@ function SettingsPage({ apiKey, setApiKey, platforms, setPlatforms, elevenKey, s
       </div>
       <div className="card" style={{marginBottom:24}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-          <div><div style={{fontFamily:'Playfair Display,serif',fontSize:18,marginBottom:4}}>Pexels API Key</div><div style={{fontSize:13,color:'var(--ts)'}}>Powers free stock travel footage search.</div></div>
+          <div><div style={{fontFamily:'Playfair Display,serif',fontSize:18,marginBottom:4}}>Pexels API Key</div><div style={{fontSize:13,color:'var(--ts)'}}>Powers free stock travel photos for posts.</div></div>
           {lPexels?<span className="stbd sap">✓ Connected</span>:<span className="stbd spn">Not Set</span>}
         </div>
         <div className="ib" style={{marginBottom:12}}>Get your key at <a href="https://pexels.com/api" target="_blank" rel="noopener noreferrer" style={{color:'var(--acc)'}}>pexels.com/api</a> → Your API Key</div>
@@ -813,8 +966,7 @@ function VideoStudio({ queue, published, elevenKey, pexelsKey, setPage }) {
   const searchFootage = async () => {
     if (!pexelsKey) { setError('Add your Pexels API key in Settings first.'); return; }
     if (!selected) return;
-    setLoadingFootage(true);
-    setError('');
+    setLoadingFootage(true); setError('');
     try {
       const query = selected.destination || 'travel';
       const res = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=6&orientation=landscape`, {
@@ -823,57 +975,42 @@ function VideoStudio({ queue, published, elevenKey, pexelsKey, setPage }) {
       const data = await res.json();
       setFootage(data.videos || []);
       setStep(2);
-    } catch(e) {
-      setError('Could not fetch footage: ' + e.message);
-    }
+    } catch(e) { setError('Could not fetch footage: ' + e.message); }
     setLoadingFootage(false);
   };
 
   const generateVoiceover = async () => {
     if (!selected) return;
-    setGeneratingVoice(true);
-    setError('');
+    setGeneratingVoice(true); setError('');
     try {
       const script = selected.youtube_script || selected.hook || '';
-      const res = await fetch('/api/elevenlabs', {
+      const voiceId = '21m00Tcm4TlvDq8ikWAM';
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: script.slice(0, 2500) })
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': elevenKey },
+        body: JSON.stringify({ text: script.slice(0, 2500), model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
       });
-      if (!res.ok) {
-        const err = await res.json().catch(()=>({}));
-        throw new Error(err.error || 'ElevenLabs error: ' + res.status);
-      }
+      if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail?.message || 'ElevenLabs error: ' + res.status); }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `${selected.title || 'voiceover'}.mp3`;
-      a.click();
-      setVoiceReady(true);
-      setStep(3);
-    } catch(e) {
-      setError('Voiceover failed: ' + e.message);
-    }
+      a.href = url; a.download = `${selected.title || 'voiceover'}.mp3`; a.click();
+      setVoiceReady(true); setStep(3);
+    } catch(e) { setError('Voiceover failed: ' + e.message); }
     setGeneratingVoice(false);
   };
 
   return (
     <div className="fi">
       <div className="ph"><h1>Video Studio</h1><p>Turn approved scripts into voiceover + footage — ready to assemble.</p></div>
-      {!elevenKey || !pexelsKey ? (
-        <div className="ib">⚠ Add your <strong>ElevenLabs</strong> and <strong>Pexels</strong> API keys in Settings first. <button className="btn bg2b bsm" style={{marginLeft:8}} onClick={()=>setPage('settings')}>Settings →</button></div>
-      ) : null}
+      {(!elevenKey || !pexelsKey) && <div className="ib">⚠ Add your <strong>ElevenLabs</strong> and <strong>Pexels</strong> API keys in Settings first. <button className="btn bg2b bsm" style={{marginLeft:8}} onClick={()=>setPage('settings')}>Settings →</button></div>}
       {error && <div style={{background:'rgba(224,92,92,.1)',border:'1px solid rgba(224,92,92,.2)',borderRadius:8,padding:'12px 16px',marginBottom:20,fontSize:14,color:'var(--red)'}}>{error}</div>}
-
       <div style={{display:'flex',gap:8,marginBottom:8}}>
         {['1. Select Content','2. Get Footage','3. Get Voiceover'].map((s,i)=>(
           <div key={i} style={{flex:1,padding:'8px 12px',borderRadius:8,background:step>i?'var(--accd)':'var(--bgc)',border:`1px solid ${step>i?'var(--acc)':'var(--bds)'}`,fontSize:12,color:step>i?'var(--acc)':'var(--ts)',textAlign:'center'}}>{s}</div>
         ))}
       </div>
-
       <div className="dvd"/>
-
       <div className="card" style={{marginBottom:16}}>
         <div className="stl" style={{fontSize:16,marginBottom:12}}>Select Approved Content</div>
         {approved.length === 0 ? (
@@ -889,7 +1026,6 @@ function VideoStudio({ queue, published, elevenKey, pexelsKey, setPage }) {
           </div>
         )}
       </div>
-
       {selected && (
         <>
           <div className="card" style={{marginBottom:16}}>
@@ -912,20 +1048,14 @@ function VideoStudio({ queue, published, elevenKey, pexelsKey, setPage }) {
               </div>
             )}
           </div>
-
           <div className="card" style={{marginBottom:16}}>
             <div className="stl" style={{fontSize:16,marginBottom:8}}>Step 3 — Generate Voiceover</div>
             <p style={{fontSize:13,color:'var(--ts)',marginBottom:16}}>Sends your script to ElevenLabs AI → downloads as MP3. Professional travel narrator voice.</p>
             <button className="btn bp" onClick={generateVoiceover} disabled={generatingVoice}>
               {generatingVoice?<><span className="ring"/> Generating voiceover...</>:'Generate & Download Voiceover'}
             </button>
-            {voiceReady && (
-              <div style={{marginTop:16,padding:12,background:'var(--accd)',borderRadius:8,border:'1px solid var(--bdr)',fontSize:13,color:'var(--accl)'}}>
-                ✓ Voiceover downloaded! Now combine it with your footage in CapCut (free) and upload to YouTube.
-              </div>
-            )}
+            {voiceReady && <div style={{marginTop:16,padding:12,background:'var(--accd)',borderRadius:8,border:'1px solid var(--bdr)',fontSize:13,color:'var(--accl)'}}>✓ Voiceover downloaded! Now combine it with your footage in CapCut and upload to YouTube.</div>}
           </div>
-
           <div className="card">
             <div className="stl" style={{fontSize:16,marginBottom:8}}>Step 4 — Assemble & Upload</div>
             <div style={{display:'flex',flexDirection:'column',gap:8,fontSize:13,color:'var(--ts)'}}>
