@@ -531,18 +531,37 @@ function PublishPanel({ item, platforms, pexelsKey }) {
     try {
       const caption = item.instagram_caption || item.hook || '';
       const imageUrl = selectedImg.src.large;
+      const igUserId = platforms.ig_user_id;
+      const token = platforms.ig_access_token;
       // Step 1: Create media container
       const createRes = await fetch(
-        `https://graph.facebook.com/v18.0/${platforms.ig_user_id}/media?image_url=${encodeURIComponent(imageUrl)}&caption=${encodeURIComponent(caption)}&access_token=${platforms.ig_access_token}`,
-        { method: 'POST' }
+        `https://graph.facebook.com/v18.0/${igUserId}/media`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_url: imageUrl,
+            caption: caption,
+            access_token: token
+          })
+        }
       );
       const createData = await createRes.json();
       if (createData.error) throw new Error(createData.error.message);
       const containerId = createData.id;
+      // Wait for container to be ready
+      await new Promise(r => setTimeout(r, 2000));
       // Step 2: Publish container
       const pubRes = await fetch(
-        `https://graph.facebook.com/v18.0/${platforms.ig_user_id}/media_publish?creation_id=${containerId}&access_token=${platforms.ig_access_token}`,
-        { method: 'POST' }
+        `https://graph.facebook.com/v18.0/${igUserId}/media_publish`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            creation_id: containerId,
+            access_token: token
+          })
+        }
       );
       const pubData = await pubRes.json();
       if (pubData.error) throw new Error(pubData.error.message);
