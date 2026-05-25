@@ -623,85 +623,97 @@ function PublishPanel({ item, platforms, pexelsKey }) {
   );
 }
 
-function QueuePage({ queue, approve, reject, editItem, platforms, pexelsKey }) {
+function QueuePage({ queue, published, approve, reject, editItem, platforms, pexelsKey }) {
   const [expanded, setExpanded] = useState(null);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState({});
   const [activeTab, setActiveTab] = useState('script');
   const [filter, setFilter] = useState('pending');
-  const [publishing, setPublishing] = useState(null);
-  const filtered = queue.filter(q => filter === 'all' ? true : q.status === filter);
+
   const pending = queue.filter(q => q.status === 'pending').length;
+  const approved = published || [];
+
+  // Combined list based on filter
+  const filtered = filter === 'approved'
+    ? approved
+    : filter === 'all'
+      ? [...queue, ...approved]
+      : queue.filter(q => q.status === filter);
+
   const tabs = [{id:'script',l:'YT Script'},{id:'desc',l:'YT Desc'},{id:'ig',l:'Instagram'},{id:'tt',l:'TikTok'},{id:'fb',l:'Facebook'},{id:'broll',l:'B-Roll'},{id:'eng',l:'Engagement'}];
 
-  const handleApprove = (id) => {
-    approve(id);
-    setPublishing(id);
-  };
+  const renderItem = (item) => (
+    <div key={item.id} className="cc">
+      <div className="cch">
+        <div style={{flex:1}}>
+          <div className="cct">{item.title}</div>
+          <div className="ccm"><Plats /><span className={`stbd ${item.status === 'pending' ? 'spn' : item.status === 'approved' ? 'sap' : 'srj'}`}>{item.status}</span></div>
+          <div style={{fontSize:12,color:'var(--td)',marginTop:6}}>{item.destination} · {new Date(item.createdAt).toLocaleDateString()}</div>
+        </div>
+        <button className="btn bg2b bsm" onClick={() => setExpanded(expanded === item.id ? null : item.id)}>{expanded === item.id ? 'Collapse ↑' : 'Expand ↓'}</button>
+      </div>
+      <div style={{marginBottom:14}}><div className="csl">Hook</div><div className="cst" style={{fontSize:13}}>{item.hook}</div></div>
+      {expanded === item.id && (
+        <div className="fi">
+          {editing === item.id ? (
+            <div>
+              <div className="fg"><label className="lbl">Title</label><input className="inp" value={draft.title||''} onChange={e => setDraft(d => ({...d,title:e.target.value}))} /></div>
+              <div className="fg"><label className="lbl">Hook</label><textarea className="inp" rows={3} value={draft.hook||''} onChange={e => setDraft(d => ({...d,hook:e.target.value}))} /></div>
+              <div className="fg"><label className="lbl">YouTube Script</label><textarea className="inp" rows={10} value={draft.youtube_script||''} onChange={e => setDraft(d => ({...d,youtube_script:e.target.value}))} /></div>
+              <div className="fg"><label className="lbl">Instagram Caption</label><textarea className="inp" rows={5} value={draft.instagram_caption||''} onChange={e => setDraft(d => ({...d,instagram_caption:e.target.value}))} /></div>
+              <div className="fg"><label className="lbl">TikTok Caption</label><textarea className="inp" rows={3} value={draft.tiktok_caption||''} onChange={e => setDraft(d => ({...d,tiktok_caption:e.target.value}))} /></div>
+              <div className="fg"><label className="lbl">Facebook Caption</label><textarea className="inp" rows={4} value={draft.facebook_caption||''} onChange={e => setDraft(d => ({...d,facebook_caption:e.target.value}))} /></div>
+              <div className="ca">
+                <button className="btn bp" onClick={() => { editItem(editing, draft); setEditing(null); setDraft({}); }}>Save Changes</button>
+                <button className="btn bg2b" onClick={() => setEditing(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="tabs">{tabs.map(t => <button key={t.id} className={`tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>{t.l}</button>)}</div>
+              {activeTab === 'script' && <div className="cst" style={{maxHeight:350,overflowY:'auto'}}>{item.youtube_script}</div>}
+              {activeTab === 'desc' && <div className="cst" style={{maxHeight:350,overflowY:'auto'}}>{item.youtube_description}</div>}
+              {activeTab === 'ig' && <div className="cst">{item.instagram_caption}</div>}
+              {activeTab === 'tt' && <div className="cst">{item.tiktok_caption}</div>}
+              {activeTab === 'fb' && <div className="cst">{item.facebook_caption}</div>}
+              {activeTab === 'broll' && <div><div style={{marginBottom:14}}><div className="csl">B-Roll</div><div className="cst">{item.b_roll_suggestions?.map((s,i) => `${i+1}. ${s}`).join('\n')}</div></div><div><div className="csl">Thumbnail</div><div className="cst">{item.thumbnail_concept}</div></div></div>}
+              {activeTab === 'eng' && <div><div style={{marginBottom:14}}><div className="csl">Pinned Comment</div><div className="cst">{item.pinned_comment}</div></div><div><div className="csl">Reply Templates</div><div className="cst">{item.comment_reply_templates?.map((t,i) => `Reply ${i+1}:\n${t}`).join('\n\n')}</div></div></div>}
+            </div>
+          )}
+        </div>
+      )}
+      {/* Publish panel always visible for approved items */}
+      {item.status === 'approved' && (
+        <PublishPanel item={item} platforms={platforms} pexelsKey={pexelsKey} />
+      )}
+      {item.status === 'pending' && (
+        <div className="ca">
+          <button className="btn bsc" onClick={() => { approve(item.id); setExpanded(item.id); }}>✓ Approve & Publish</button>
+          <button className="btn bs" onClick={() => { setEditing(item.id); setDraft({...item}); setExpanded(item.id); }}>✎ Edit</button>
+          <button className="btn bd" onClick={() => reject(item.id)}>✕ Reject</button>
+        </div>
+      )}
+      {item.status === 'rejected' && <div className="ca"><button className="btn bs" onClick={() => editItem(item.id, {status:'pending'})}>↩ Restore</button></div>}
+    </div>
+  );
 
   return (
     <div className="fi">
       <div className="ph"><h1>Approval Queue</h1><p>Review, approve, then post directly to Instagram &amp; Facebook.</p></div>
       {pending > 0 && <div className="ib" style={{marginBottom:24}}>✦ <strong>{pending} piece{pending > 1 ? 's' : ''}</strong> waiting for your approval. Approve → pick a photo → post instantly.</div>}
-      <div style={{display:'flex',gap:8,marginBottom:24}}>
-        {['pending','rejected','all'].map(f => <button key={f} className={`btn ${filter === f ? 'bp' : 'bg2b'} bsm`} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}{f === 'pending' && pending > 0 && ` (${pending})`}</button>)}
+      <div style={{display:'flex',gap:8,marginBottom:24,flexWrap:'wrap'}}>
+        {[
+          {f:'pending', label:`Pending${pending > 0 ? ` (${pending})` : ''}`},
+          {f:'approved', label:`Approved${approved.length > 0 ? ` (${approved.length})` : ''}`},
+          {f:'rejected', label:'Rejected'},
+          {f:'all', label:'All'},
+        ].map(({f, label}) => (
+          <button key={f} className={`btn ${filter === f ? 'bp' : 'bg2b'} bsm`} onClick={() => setFilter(f)}>{label}</button>
+        ))}
       </div>
       {filtered.length === 0 ? (
         <div className="es"><div className="ei">◎</div><h3>{filter === 'pending' ? 'Queue is clear' : 'Nothing here'}</h3><p>{filter === 'pending' ? 'All reviewed. Generate more to keep the calendar full.' : 'No content in this category.'}</p></div>
-      ) : filtered.map(item => (
-        <div key={item.id} className="cc">
-          <div className="cch">
-            <div style={{flex:1}}>
-              <div className="cct">{item.title}</div>
-              <div className="ccm"><Plats /><span className={`stbd ${item.status === 'pending' ? 'spn' : item.status === 'approved' ? 'sap' : 'srj'}`}>{item.status}</span></div>
-              <div style={{fontSize:12,color:'var(--td)',marginTop:6}}>{item.destination} · {new Date(item.createdAt).toLocaleDateString()}</div>
-            </div>
-            <button className="btn bg2b bsm" onClick={() => setExpanded(expanded === item.id ? null : item.id)}>{expanded === item.id ? 'Collapse ↑' : 'Expand ↓'}</button>
-          </div>
-          <div style={{marginBottom:14}}><div className="csl">Hook</div><div className="cst" style={{fontSize:13}}>{item.hook}</div></div>
-          {expanded === item.id && (
-            <div className="fi">
-              {editing === item.id ? (
-                <div>
-                  <div className="fg"><label className="lbl">Title</label><input className="inp" value={draft.title||''} onChange={e => setDraft(d => ({...d,title:e.target.value}))} /></div>
-                  <div className="fg"><label className="lbl">Hook</label><textarea className="inp" rows={3} value={draft.hook||''} onChange={e => setDraft(d => ({...d,hook:e.target.value}))} /></div>
-                  <div className="fg"><label className="lbl">YouTube Script</label><textarea className="inp" rows={10} value={draft.youtube_script||''} onChange={e => setDraft(d => ({...d,youtube_script:e.target.value}))} /></div>
-                  <div className="fg"><label className="lbl">Instagram Caption</label><textarea className="inp" rows={5} value={draft.instagram_caption||''} onChange={e => setDraft(d => ({...d,instagram_caption:e.target.value}))} /></div>
-                  <div className="fg"><label className="lbl">TikTok Caption</label><textarea className="inp" rows={3} value={draft.tiktok_caption||''} onChange={e => setDraft(d => ({...d,tiktok_caption:e.target.value}))} /></div>
-                  <div className="fg"><label className="lbl">Facebook Caption</label><textarea className="inp" rows={4} value={draft.facebook_caption||''} onChange={e => setDraft(d => ({...d,facebook_caption:e.target.value}))} /></div>
-                  <div className="ca">
-                    <button className="btn bp" onClick={() => { editItem(editing, draft); setEditing(null); setDraft({}); }}>Save Changes</button>
-                    <button className="btn bg2b" onClick={() => setEditing(null)}>Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div className="tabs">{tabs.map(t => <button key={t.id} className={`tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>{t.l}</button>)}</div>
-                  {activeTab === 'script' && <div className="cst" style={{maxHeight:350,overflowY:'auto'}}>{item.youtube_script}</div>}
-                  {activeTab === 'desc' && <div className="cst" style={{maxHeight:350,overflowY:'auto'}}>{item.youtube_description}</div>}
-                  {activeTab === 'ig' && <div className="cst">{item.instagram_caption}</div>}
-                  {activeTab === 'tt' && <div className="cst">{item.tiktok_caption}</div>}
-                  {activeTab === 'fb' && <div className="cst">{item.facebook_caption}</div>}
-                  {activeTab === 'broll' && <div><div style={{marginBottom:14}}><div className="csl">B-Roll</div><div className="cst">{item.b_roll_suggestions?.map((s,i) => `${i+1}. ${s}`).join('\n')}</div></div><div><div className="csl">Thumbnail</div><div className="cst">{item.thumbnail_concept}</div></div></div>}
-                  {activeTab === 'eng' && <div><div style={{marginBottom:14}}><div className="csl">Pinned Comment</div><div className="cst">{item.pinned_comment}</div></div><div><div className="csl">Reply Templates</div><div className="cst">{item.comment_reply_templates?.map((t,i) => `Reply ${i+1}:\n${t}`).join('\n\n')}</div></div></div>}
-                </div>
-              )}
-            </div>
-          )}
-          {/* Publish panel for approved items */}
-          {item.status === 'approved' && (
-            <PublishPanel item={item} platforms={platforms} pexelsKey={pexelsKey} />
-          )}
-          {item.status === 'pending' && (
-            <div className="ca">
-              <button className="btn bsc" onClick={() => { approve(item.id); setExpanded(item.id); }}>✓ Approve & Publish</button>
-              <button className="btn bs" onClick={() => { setEditing(item.id); setDraft({...item}); setExpanded(item.id); }}>✎ Edit</button>
-              <button className="btn bd" onClick={() => reject(item.id)}>✕ Reject</button>
-            </div>
-          )}
-          {item.status === 'rejected' && <div className="ca"><button className="btn bs" onClick={() => editItem(item.id, {status:'pending'})}>↩ Restore</button></div>}
-        </div>
-      ))}
+      ) : filtered.map(item => renderItem(item))}
     </div>
   );
 }
