@@ -558,17 +558,34 @@ function PublishPanel({ item, platforms, pexelsKey }) {
     try {
       const caption = item.facebook_caption || item.hook || '';
       const imageUrl = selectedImg.src.large;
-      const res = await fetch(
+      // Step 1: Upload photo unpublished to get photo ID
+      const uploadRes = await fetch(
         `https://graph.facebook.com/v18.0/${platforms.fb_page_id}/photos`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: imageUrl, caption, access_token: platforms.fb_access_token })
+          body: JSON.stringify({ url: imageUrl, published: false, access_token: platforms.fb_access_token })
         }
       );
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
-      setFbStatus('ok:Posted to Facebook! Post ID: ' + data.post_id);
+      const uploadData = await uploadRes.json();
+      if (uploadData.error) throw new Error(uploadData.error.message);
+      const photoId = uploadData.id;
+      // Step 2: Create feed post with photo attached
+      const postRes = await fetch(
+        `https://graph.facebook.com/v18.0/${platforms.fb_page_id}/feed`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: caption,
+            attached_media: [{ media_fbid: photoId }],
+            access_token: platforms.fb_access_token
+          })
+        }
+      );
+      const postData = await postRes.json();
+      if (postData.error) throw new Error(postData.error.message);
+      setFbStatus('ok:Posted to Facebook! Post ID: ' + postData.id);
     } catch(e) { setFbStatus('error:' + e.message); }
     setFbPosting(false);
   };
