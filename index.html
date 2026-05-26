@@ -179,6 +179,7 @@ function App() {
     {id:'queue', icon:'◎', label:'Approval Queue', badge:pending},
     {id:'calendar', icon:'▦', label:'Content Calendar'},
     {id:'monetization', icon:'◆', label:'Monetization'},
+    {id:'analytics', icon:'📊', label:'Analytics'},
     {id:'guides', icon:'📖', label:'Digital Products'},
     {id:'video', icon:'▶', label:'Video Studio'},
     {id:'settings', icon:'◉', label:'Settings'},
@@ -187,12 +188,12 @@ function App() {
     {id:'dashboard', icon:'◈', label:'Home'},
     {id:'generate', icon:'✦', label:'Create'},
     {id:'queue', icon:'◎', label:'Queue', badge:pending},
-    {id:'guides', icon:'📖', label:'Guides'},
+    {id:'analytics', icon:'📊', label:'Analytics'},
     {id:'monetization', icon:'◆', label:'Money'},
     {id:'settings', icon:'◉', label:'More'},
   ];
 
-  const pages = {dashboard:Dashboard, generate:Generate, queue:QueuePage, calendar:CalendarPage, monetization:Monetization, guides:GuidesPage, video:VideoStudio, settings:SettingsPage};
+  const pages = {dashboard:Dashboard, generate:Generate, queue:QueuePage, calendar:CalendarPage, monetization:Monetization, analytics:AnalyticsPage, guides:GuidesPage, video:VideoStudio, settings:SettingsPage};
   const Page = pages[page] || Dashboard;
 
   const sharedProps = {queue, published, affiliates, setAffiliates, platforms, setPlatforms, apiKey, setApiKey, elevenKey, setElevenKey, pexelsKey, setPexelsKey, approve, reject, editItem, addToQueue, setPage, postHistory, addToHistory, guides, addGuide, deleteGuide, bannerUrl, setBannerUrl};
@@ -978,6 +979,218 @@ Write 5-7 sections covering the destination from an experience-first perspective
           </div>
         ))
       }
+    </div>
+  );
+}
+
+
+// ── ANALYTICS ─────────────────────────────────────────────────────────────────
+function AnalyticsPage({platforms, postHistory, affiliates}) {
+  const [igStats, setIgStats] = useState([]);
+  const [fbStats, setFbStats] = useState([]);
+  const [loadingIg, setLoadingIg] = useState(false);
+  const [loadingFb, setLoadingFb] = useState(false);
+  const [igError, setIgError] = useState('');
+  const [fbError, setFbError] = useState('');
+  const [earnings, setEarnings] = useState(() => { try { return JSON.parse(localStorage.getItem('btp_earnings')||'[]'); } catch { return []; } });
+  const [addingEarning, setAddingEarning] = useState(false);
+  const [newEarning, setNewEarning] = useState({source:'getyourguide', amount:'', note:'', date: new Date().toISOString().slice(0,10)});
+
+  const igReady = !!(platforms.ig_access_token && platforms.ig_user_id);
+  const fbReady = !!(platforms.fb_access_token && platforms.fb_page_id);
+
+  useEffect(() => { localStorage.setItem('btp_earnings', JSON.stringify(earnings)); }, [earnings]);
+
+  const fetchIgInsights = async () => {
+    if (!igReady) { setIgError('Add Instagram credentials in Settings first.'); return; }
+    setLoadingIg(true); setIgError('');
+    try {
+      const mediaRes = await fetch(`https://graph.facebook.com/v18.0/${platforms.ig_user_id}/media?fields=id,caption,timestamp,like_count,comments_count&limit=10&access_token=${platforms.ig_access_token}`);
+      const mediaData = await mediaRes.json();
+      if (mediaData.error) throw new Error(mediaData.error.message);
+      setIgStats(mediaData.data || []);
+    } catch(e) { setIgError('Could not load Instagram data: ' + e.message); }
+    setLoadingIg(false);
+  };
+
+  const fetchFbInsights = async () => {
+    if (!fbReady) { setFbError('Add Facebook credentials in Settings first.'); return; }
+    setLoadingFb(true); setFbError('');
+    try {
+      const postsRes = await fetch(`https://graph.facebook.com/v18.0/${platforms.fb_page_id}/posts?fields=id,message,created_time,likes.summary(true),comments.summary(true),insights.metric(post_impressions,post_reach,post_engaged_users)&limit=10&access_token=${platforms.fb_access_token}`);
+      const postsData = await postsRes.json();
+      if (postsData.error) throw new Error(postsData.error.message);
+      setFbStats(postsData.data || []);
+    } catch(e) { setFbError('Could not load Facebook data: ' + e.message); }
+    setLoadingFb(false);
+  };
+
+  const saveEarning = () => {
+    if (!newEarning.amount) return;
+    setEarnings(e => [{...newEarning, id:Date.now(), amount:parseFloat(newEarning.amount)}, ...e]);
+    setNewEarning({source:'getyourguide', amount:'', note:'', date: new Date().toISOString().slice(0,10)});
+    setAddingEarning(false);
+  };
+
+  const totalEarnings = earnings.reduce((sum,e) => sum + (e.amount||0), 0);
+  const bySource = earnings.reduce((acc,e) => { acc[e.source]=(acc[e.source]||0)+e.amount; return acc; }, {});
+
+  const SOURCES = [
+    {id:'getyourguide',label:'GetYourGuide',color:'var(--acc)'},
+    {id:'viator',label:'Viator',color:'var(--grn)'},
+    {id:'airbnb',label:'Airbnb Experiences',color:'#ff6b6b'},
+    {id:'amazon',label:'Amazon',color:'#e8a020'},
+    {id:'tripadvisor',label:'TripAdvisor',color:'var(--blu)'},
+    {id:'youtube',label:'YouTube AdSense',color:'#ff6b6b'},
+    {id:'gumroad',label:'Gumroad (Guides)',color:'var(--accl)'},
+    {id:'other',label:'Other',color:'var(--ts)'},
+  ];
+
+  return (
+    <div className="fi">
+      <div className="ph"><h1>Analytics</h1><p>Post performance, earnings tracking, and quick links to your affiliate dashboards.</p></div>
+
+      <div className="card" style={{marginBottom:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div className="stl" style={{marginBottom:0}}>Earnings Tracker</div>
+          <button className="btn bp bsm" onClick={()=>setAddingEarning(!addingEarning)}>+ Log Payment</button>
+        </div>
+        <div className="sg" style={{marginBottom:16}}>
+          <div className="sc"><div className="sl">Total Earned</div><div className="sv" style={{color:'var(--grn)'}}>${totalEarnings.toFixed(2)}</div><div className="ss">all time</div></div>
+          {SOURCES.filter(s=>bySource[s.id]).map(s=>(
+            <div key={s.id} className="sc"><div className="sl">{s.label}</div><div className="sv" style={{color:s.color,fontSize:22}}>${(bySource[s.id]||0).toFixed(2)}</div><div className="ss">earned</div></div>
+          ))}
+        </div>
+        {addingEarning&&(
+          <div style={{background:'var(--bg)',border:'1px solid var(--bds)',borderRadius:8,padding:16,marginBottom:16}}>
+            <div className="g2" style={{gap:12,marginBottom:12}}>
+              <div><label className="lbl" style={{fontSize:10}}>Source</label><select className="inp" value={newEarning.source} onChange={e=>setNewEarning(n=>({...n,source:e.target.value}))}>{SOURCES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
+              <div><label className="lbl" style={{fontSize:10}}>Amount ($)</label><input className="inp" type="number" step="0.01" placeholder="0.00" value={newEarning.amount} onChange={e=>setNewEarning(n=>({...n,amount:e.target.value}))}/></div>
+            </div>
+            <div className="g2" style={{gap:12,marginBottom:12}}>
+              <div><label className="lbl" style={{fontSize:10}}>Date</label><input className="inp" type="date" value={newEarning.date} onChange={e=>setNewEarning(n=>({...n,date:e.target.value}))}/></div>
+              <div><label className="lbl" style={{fontSize:10}}>Note (optional)</label><input className="inp" placeholder="e.g. First GYG payout" value={newEarning.note} onChange={e=>setNewEarning(n=>({...n,note:e.target.value}))}/></div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn bp bsm" onClick={saveEarning}>Save</button>
+              <button className="btn bg2b bsm" onClick={()=>setAddingEarning(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+        {earnings.length>0
+          ? earnings.slice(0,8).map(e=>{
+              const src=SOURCES.find(s=>s.id===e.source);
+              return(
+                <div key={e.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--bds)'}}>
+                  <div><div style={{fontSize:13,fontWeight:500}}>{src?.label||e.source}</div><div style={{fontSize:11,color:'var(--td)'}}>{e.date}{e.note?` · ${e.note}`:''}</div></div>
+                  <div style={{display:'flex',alignItems:'center',gap:12}}>
+                    <div style={{fontSize:15,fontWeight:700,color:'var(--grn)'}}>${e.amount.toFixed(2)}</div>
+                    <button style={{background:'none',border:'none',color:'var(--td)',cursor:'pointer',fontSize:11}} onClick={()=>setEarnings(es=>es.filter(x=>x.id!==e.id))}>✕</button>
+                  </div>
+                </div>
+              );
+            })
+          : !addingEarning&&<div style={{fontSize:13,color:'var(--td)',textAlign:'center',padding:'12px 0'}}>No earnings logged yet. When your first payout hits, log it here to track growth.</div>
+        }
+      </div>
+
+      <div className="card" style={{marginBottom:24}}>
+        <div className="stl" style={{fontSize:16,marginBottom:16}}>Affiliate Dashboards</div>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {[
+            {name:'GetYourGuide Partner Portal',url:'https://partners.getyourguide.com',note:'Clicks, bookings, earnings',active:!!affiliates.getyourguide,color:'var(--acc)'},
+            {name:'Viator Partner Dashboard',url:'https://www.viator.com/orion/partner/dashboard',note:'Performance & payouts',active:!!affiliates.viator,color:'var(--grn)'},
+            {name:'Airbnb Associates',url:'https://www.airbnb.com/associates/dashboard',note:'Experience bookings',active:!!affiliates.airbnb,color:'#ff6b6b'},
+            {name:'Amazon Associates',url:'https://affiliate-program.amazon.com/home/reports',note:'Clicks, orders, earnings — complete tax info first',active:!!affiliates.amazon,color:'#e8a020'},
+            {name:'TripAdvisor Affiliate',url:'https://www.tripadvisor.com/affiliates',note:'Click-out reports',active:!!affiliates.tripadvisor,color:'var(--blu)'},
+            {name:'Gumroad Dashboard',url:'https://app.gumroad.com/dashboard',note:'Guide sales & revenue',active:true,color:'var(--accl)'},
+          ].map((d,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--bds)'}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:d.active?'var(--tp)':'var(--td)'}}>{d.name}</div>
+                <div style={{fontSize:11,color:'var(--td)',marginTop:2}}>{d.note}</div>
+              </div>
+              {d.active
+                ? <a href={d.url} target="_blank" rel="noopener noreferrer" className="btn bsm" style={{background:d.color,color:'#000',flexShrink:0}}>Open →</a>
+                : <span className="stbd spn" style={{flexShrink:0}}>Not set up</span>
+              }
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div className="stl" style={{marginBottom:0}}>Instagram Post Performance</div>
+          <button className="btn big2 bsm" onClick={fetchIgInsights} disabled={loadingIg||!igReady}>{loadingIg?<><span className="ring" style={{width:14,height:14,borderWidth:2}}/>Loading...</>:'◎ Load Posts'}</button>
+        </div>
+        {!igReady&&<div style={{fontSize:13,color:'var(--td)'}}>Add Instagram credentials in Settings to load post performance.</div>}
+        {igError&&<div style={{fontSize:13,color:'var(--red)'}}>{igError}</div>}
+        {igStats.length>0&&(
+          <div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,fontSize:11,color:'var(--td)',textTransform:'uppercase',letterSpacing:1,padding:'0 0 8px',borderBottom:'1px solid var(--bds)',marginBottom:8}}>
+              <div>Post</div><div style={{textAlign:'center'}}>Likes</div><div style={{textAlign:'center'}}>Comments</div>
+            </div>
+            {igStats.map(post=>(
+              <div key={post.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,padding:'10px 0',borderBottom:'1px solid var(--bds)',alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:12,color:'var(--tp)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:220}}>{post.caption?.slice(0,70)||'(no caption)'}...</div>
+                  <div style={{fontSize:11,color:'var(--td)',marginTop:2}}>{new Date(post.timestamp).toLocaleDateString()}</div>
+                </div>
+                <div style={{textAlign:'center',fontSize:14,fontWeight:700,color:'var(--grn)'}}>{post.like_count??'—'}</div>
+                <div style={{textAlign:'center',fontSize:14,fontWeight:700,color:'var(--blu)'}}>{post.comments_count??'—'}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {igStats.length===0&&!loadingIg&&igReady&&!igError&&<div style={{fontSize:13,color:'var(--td)',textAlign:'center',padding:'16px 0'}}>Click "Load Posts" to see your Instagram performance.</div>}
+      </div>
+
+      <div className="card" style={{marginBottom:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div className="stl" style={{marginBottom:0}}>Facebook Post Performance</div>
+          <button className="btn bfb2 bsm" onClick={fetchFbInsights} disabled={loadingFb||!fbReady}>{loadingFb?<><span className="ring" style={{width:14,height:14,borderWidth:2}}/>Loading...</>:'⬡ Load Posts'}</button>
+        </div>
+        {!fbReady&&<div style={{fontSize:13,color:'var(--td)'}}>Add Facebook credentials in Settings to load post performance.</div>}
+        {fbError&&<div style={{fontSize:13,color:'var(--red)'}}>{fbError}</div>}
+        {fbStats.length>0&&(
+          <div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,fontSize:11,color:'var(--td)',textTransform:'uppercase',letterSpacing:1,padding:'0 0 8px',borderBottom:'1px solid var(--bds)',marginBottom:8}}>
+              <div>Post</div><div style={{textAlign:'center'}}>Reach</div><div style={{textAlign:'center'}}>Impressions</div><div style={{textAlign:'center'}}>Engaged</div>
+            </div>
+            {fbStats.map(post=>{
+              const reach = post.insights?.data?.find(d=>d.name==='post_reach')?.values?.[0]?.value??'—';
+              const impr = post.insights?.data?.find(d=>d.name==='post_impressions')?.values?.[0]?.value??'—';
+              const eng = post.insights?.data?.find(d=>d.name==='post_engaged_users')?.values?.[0]?.value??'—';
+              return(
+                <div key={post.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,padding:'10px 0',borderBottom:'1px solid var(--bds)',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontSize:12,color:'var(--tp)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:180}}>{post.message?.slice(0,70)||'(no message)'}...</div>
+                    <div style={{fontSize:11,color:'var(--td)',marginTop:2}}>{new Date(post.created_time).toLocaleDateString()}</div>
+                  </div>
+                  <div style={{textAlign:'center',fontSize:13,fontWeight:700,color:'var(--acc)'}}>{reach}</div>
+                  <div style={{textAlign:'center',fontSize:13,fontWeight:700,color:'var(--grn)'}}>{impr}</div>
+                  <div style={{textAlign:'center',fontSize:13,fontWeight:700,color:'var(--blu)'}}>{eng}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {fbStats.length===0&&!loadingFb&&fbReady&&!fbError&&<div style={{fontSize:13,color:'var(--td)',textAlign:'center',padding:'16px 0'}}>Click "Load Posts" to see your Facebook performance.</div>}
+      </div>
+
+      <div className="card">
+        <div className="stl" style={{fontSize:16,marginBottom:16}}>Posts Sent ({postHistory.length})</div>
+        {postHistory.length===0
+          ? <div style={{fontSize:13,color:'var(--td)',textAlign:'center',padding:'16px 0'}}>No posts sent yet. Go to Approval Queue and post your first piece.</div>
+          : postHistory.map((h,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid var(--bds)'}}>
+              <div><div style={{fontSize:13,fontWeight:500}}>{h.title}</div><div style={{fontSize:11,color:'var(--td)'}}>{h.destination} · {new Date(h.postedAt).toLocaleDateString()} {new Date(h.postedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>
+              <span className={`stbd ${h.platform==='both'?'sap':h.platform==='instagram'?'big':'spb'}`} style={{fontSize:10}}>{h.platform==='both'?'◎⬡ Both':h.platform==='instagram'?'◎ IG':'⬡ FB'}</span>
+            </div>
+          ))
+        }
+      </div>
     </div>
   );
 }
