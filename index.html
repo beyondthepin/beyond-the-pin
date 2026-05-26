@@ -139,6 +139,7 @@ function App() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('btp_api') || '');
   const [elevenKey, setElevenKey] = useState(() => localStorage.getItem('btp_eleven') || '');
   const [pexelsKey, setPexelsKey] = useState(() => localStorage.getItem('btp_pexels') || '');
+  const [unsplashKey, setUnsplashKey] = useState(() => localStorage.getItem('btp_unsplash') || '');
   const [queue, setQueue] = useState(() => { try { return JSON.parse(localStorage.getItem('btp_q') || '[]'); } catch { return []; } });
   const [published, setPublished] = useState(() => { try { return JSON.parse(localStorage.getItem('btp_pub') || '[]'); } catch { return []; } });
   const [affiliates, setAffiliates] = useState(() => { try { return JSON.parse(localStorage.getItem('btp_aff') || '{}'); } catch { return {}; } });
@@ -150,6 +151,7 @@ function App() {
   useEffect(() => { localStorage.setItem('btp_api', apiKey); }, [apiKey]);
   useEffect(() => { localStorage.setItem('btp_eleven', elevenKey); }, [elevenKey]);
   useEffect(() => { localStorage.setItem('btp_pexels', pexelsKey); }, [pexelsKey]);
+  useEffect(() => { localStorage.setItem('btp_unsplash', unsplashKey); }, [unsplashKey]);
   useEffect(() => { localStorage.setItem('btp_q', JSON.stringify(queue)); }, [queue]);
   useEffect(() => { localStorage.setItem('btp_pub', JSON.stringify(published)); }, [published]);
   useEffect(() => { localStorage.setItem('btp_aff', JSON.stringify(affiliates)); }, [affiliates]);
@@ -196,7 +198,7 @@ function App() {
   const pages = {dashboard:Dashboard, generate:Generate, queue:QueuePage, calendar:CalendarPage, monetization:Monetization, analytics:AnalyticsPage, guides:GuidesPage, video:VideoStudio, settings:SettingsPage};
   const Page = pages[page] || Dashboard;
 
-  const sharedProps = {queue, published, affiliates, setAffiliates, platforms, setPlatforms, apiKey, setApiKey, elevenKey, setElevenKey, pexelsKey, setPexelsKey, approve, reject, editItem, addToQueue, setPage, postHistory, addToHistory, guides, addGuide, deleteGuide, bannerUrl, setBannerUrl};
+  const sharedProps = {queue, published, affiliates, setAffiliates, platforms, setPlatforms, apiKey, setApiKey, elevenKey, setElevenKey, pexelsKey, setPexelsKey, unsplashKey, setUnsplashKey, approve, reject, editItem, addToQueue, setPage, postHistory, addToHistory, guides, addGuide, deleteGuide, bannerUrl, setBannerUrl};
 
   return (
     <div className="shell">
@@ -520,10 +522,11 @@ ${affLinks()}`;
 }
 
 // ── PUBLISH PANEL ─────────────────────────────────────────────────────────────
-function PublishPanel({item, platforms, pexelsKey, onPostSuccess}) {
+function PublishPanel({item, platforms, pexelsKey, unsplashKey, onPostSuccess}) {
   const [images, setImages] = useState([]);
   const [loadingImgs, setLoadingImgs] = useState(false);
   const [selectedImg, setSelectedImg] = useState(null);
+  const [imgSource, setImgSource] = useState('both');
   const [igStatus, setIgStatus] = useState('');
   const [fbStatus, setFbStatus] = useState('');
   const [igPosting, setIgPosting] = useState(false);
@@ -538,14 +541,69 @@ function PublishPanel({item, platforms, pexelsKey, onPostSuccess}) {
   const igReady = !!(platforms.ig_access_token && platforms.ig_user_id);
   const fbReady = !!(platforms.fb_access_token && platforms.fb_page_id);
 
+  // Build smarter search query from destination + content type
+  const buildSearchQuery = () => {
+    const dest = item.destination || 'travel';
+    const type = item.contentType || '';
+    const keywords = {
+      hidden_gems: 'hidden secret scenic',
+      tourist_vs_local: 'local street authentic',
+      itinerary: 'landscape scenic travel',
+      budget_guide: 'travel adventure backpack',
+      luxury_guide: 'luxury scenic beautiful',
+      seasonal: 'nature scenic travel',
+    };
+    const extra = keywords[type] || 'scenic travel';
+    return `${dest} ${extra}`;
+  };
+
   const searchImages = async () => {
-    if (!pexelsKey) { setImgError('Add Pexels API key in Settings.'); return; }
+    if (!pexelsKey && !unsplashKey) { setImgError('Add Pexels or Unsplash API key in Settings.'); return; }
     setLoadingImgs(true); setImgError(''); setImages([]);
+    const query = buildSearchQuery();
+    const allImages = [];
     try {
-      const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(item.destination||'travel')}&per_page=9&orientation=landscape`, {headers:{Authorization:pexelsKey}});
-      const data = await res.json();
-      setImages(data.photos || []);
-    } catch(e) { setImgError('Could not load images: '+e.message); }
+      // Fetch from Pexels
+      if (pexelsKey) {
+        try {
+          const pr = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=9&orientation=landscape`, {headers:{Authorization:pexelsKey}});
+          const pd = await pr.json();
+          if (pd.photos) {
+            pd.photos.forEach(p => allImages.push({
+              id: 'px_'+p.id,
+              thumb: p.src.medium,
+              full: p.src.large2x || p.src.large,
+              credit: p.photographer,
+              source: 'Pexels'
+            }));
+          }
+        } catch(e) { console.error('Pexels error:', e); }
+      }
+      // Fetch from Unsplash
+      if (unsplashKey) {
+        try {
+          const ur = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=9&orientation=landscape&order_by=relevant`, {headers:{Authorization:`Client-ID ${unsplashKey}`}});
+          const ud = await ur.json();
+          if (ud.results) {
+            ud.results.forEach(p => allImages.push({
+              id: 'us_'+p.id,
+              thumb: p.urls.small,
+              full: p.urls.full,
+              credit: p.user.name,
+              source: 'Unsplash'
+            }));
+          }
+        } catch(e) { console.error('Unsplash error:', e); }
+      }
+      if (allImages.length === 0) throw new Error('No images found — try a different destination name');
+      // Interleave results for variety
+      const pexels = allImages.filter(i=>i.source==='Pexels');
+      const unsplash = allImages.filter(i=>i.source==='Unsplash');
+      const interleaved = [];
+      const max = Math.max(pexels.length, unsplash.length);
+      for (let i=0; i<max; i++) { if(unsplash[i]) interleaved.push(unsplash[i]); if(pexels[i]) interleaved.push(pexels[i]); }
+      setImages(interleaved.slice(0,18));
+    } catch(e) { setImgError(e.message); }
     setLoadingImgs(false);
   };
 
@@ -554,7 +612,7 @@ function PublishPanel({item, platforms, pexelsKey, onPostSuccess}) {
     if (!igReady) { setIgStatus('error:Add Instagram credentials in Settings.'); return; }
     setIgPosting(true); setIgStatus('posting');
     try {
-      const cr = await fetch(`https://graph.facebook.com/v18.0/${platforms.ig_user_id}/media`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image_url:selectedImg.src.large,caption:igCaption,access_token:platforms.ig_access_token})});
+      const cr = await fetch(`https://graph.facebook.com/v18.0/${platforms.ig_user_id}/media`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image_url:selectedImg.full,caption:igCaption,access_token:platforms.ig_access_token})});
       const cd = await cr.json(); if(cd.error) throw new Error(cd.error.message);
       await new Promise(r=>setTimeout(r,2000));
       const pr = await fetch(`https://graph.facebook.com/v18.0/${platforms.ig_user_id}/media_publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({creation_id:cd.id,access_token:platforms.ig_access_token})});
@@ -569,7 +627,7 @@ function PublishPanel({item, platforms, pexelsKey, onPostSuccess}) {
     if (!fbReady) { setFbStatus('error:Add Facebook credentials in Settings.'); return; }
     setFbPosting(true); setFbStatus('posting');
     try {
-      const ur = await fetch(`https://graph.facebook.com/v18.0/${platforms.fb_page_id}/photos`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:selectedImg.src.large,published:false,access_token:platforms.fb_access_token})});
+      const ur = await fetch(`https://graph.facebook.com/v18.0/${platforms.fb_page_id}/photos`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:selectedImg.full,published:false,access_token:platforms.fb_access_token})});
       const ud = await ur.json(); if(ud.error) throw new Error(ud.error.message);
       const fr = await fetch(`https://graph.facebook.com/v18.0/${platforms.fb_page_id}/feed`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:fbCaption,attached_media:[{media_fbid:ud.id}],access_token:platforms.fb_access_token})});
       const fd = await fr.json(); if(fd.error) throw new Error(fd.error.message);
@@ -595,11 +653,23 @@ function PublishPanel({item, platforms, pexelsKey, onPostSuccess}) {
       <div className="pub-panel-title">◎ Publish to Social</div>
       <div style={{marginBottom:16}}>
         <div style={{fontSize:12,color:'var(--ts)',marginBottom:8}}>1. Pick a photo</div>
-        <button className="btn bs bsm" onClick={searchImages} disabled={loadingImgs||!pexelsKey}>{loadingImgs?<><span className="ring" style={{width:14,height:14,borderWidth:2}}/>Loading...</>:'🔍 Search Travel Photos'}</button>
-        {!pexelsKey&&<div style={{fontSize:11,color:'var(--td)',marginTop:4}}>Add Pexels key in Settings.</div>}
+        <button className="btn bs bsm" onClick={searchImages} disabled={loadingImgs||(!pexelsKey&&!unsplashKey)}>{loadingImgs?<><span className="ring" style={{width:14,height:14,borderWidth:2}}/>Searching...</>:'🔍 Search Travel Photos'}</button>
+        {(!pexelsKey&&!unsplashKey)&&<div style={{fontSize:11,color:'var(--td)',marginTop:4}}>Add Pexels or Unsplash key in Settings.</div>}
         {imgError&&<div style={{fontSize:12,color:'var(--red)',marginTop:6}}>{imgError}</div>}
-        {images.length>0&&<div className="img-grid">{images.map(img=><img key={img.id} src={img.src.medium} alt={img.alt} className={`img-thumb ${selectedImg?.id===img.id?'selected':''}`} onClick={()=>setSelectedImg(img)}/>)}</div>}
-        {selectedImg&&<div style={{fontSize:11,color:'var(--grn)',marginTop:4}}>✓ Selected — {selectedImg.photographer}</div>}
+        {images.length>0&&(
+          <div>
+            <div style={{fontSize:11,color:'var(--td)',margin:'8px 0 4px'}}>{images.length} photos — {images.filter(i=>i.source==='Unsplash').length} Unsplash · {images.filter(i=>i.source==='Pexels').length} Pexels</div>
+            <div className="img-grid" style={{gridTemplateColumns:'repeat(3,1fr)'}}>
+              {images.map(img=>(
+                <div key={img.id} style={{position:'relative',cursor:'pointer'}} onClick={()=>setSelectedImg(img)}>
+                  <img src={img.thumb} alt="" className={`img-thumb ${selectedImg?.id===img.id?'selected':''}`} style={{width:'100%',aspectRatio:'16/9',objectFit:'cover'}}/>
+                  <div style={{position:'absolute',bottom:4,left:4,background:'rgba(0,0,0,0.6)',color:'#fff',fontSize:9,padding:'1px 5px',borderRadius:3,fontWeight:600}}>{img.source}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {selectedImg&&<div style={{fontSize:11,color:'var(--grn)',marginTop:4}}>✓ Selected — {selectedImg.credit} ({selectedImg.source})</div>}
       </div>
       {['ig','fb'].map(p=>{
         const editing = p==='ig'?editingIg:editingFb;
@@ -632,7 +702,7 @@ function PublishPanel({item, platforms, pexelsKey, onPostSuccess}) {
 }
 
 // ── QUEUE ─────────────────────────────────────────────────────────────────────
-function QueuePage({queue, published, approve, reject, editItem, platforms, pexelsKey, addToHistory}) {
+function QueuePage({queue, published, approve, reject, editItem, platforms, pexelsKey, unsplashKey, addToHistory}) {
   const [expanded, setExpanded] = useState(null);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState({});
@@ -681,7 +751,7 @@ function QueuePage({queue, published, approve, reject, editItem, platforms, pexe
           )}
         </div>
       )}
-      {item.status==='approved'&&<PublishPanel item={item} platforms={platforms} pexelsKey={pexelsKey} onPostSuccess={(id,platform)=>{if(addToHistory)addToHistory(id,platform,item.title,item.destination);}}/>}
+      {item.status==='approved'&&<PublishPanel item={item} platforms={platforms} pexelsKey={pexelsKey} unsplashKey={unsplashKey} onPostSuccess={(id,platform)=>{if(addToHistory)addToHistory(id,platform,item.title,item.destination);}}/>}
       {item.status==='pending'&&(
         <div className="ca">
           <button className="btn bsc" onClick={()=>{approve(item.id);setExpanded(item.id);}}>✓ Approve & Publish</button>
@@ -1304,16 +1374,17 @@ const PLTS = [
   {id:'fb',name:'Facebook',icon:'⬡',color:'#7b9fe0',fields:[{k:'fb_page_id',l:'Page ID',p:'Your Facebook Page ID'},{k:'fb_access_token',l:'Page Access Token',p:'From developers.facebook.com'}],url:'https://developers.facebook.com',steps:['Same app as Instagram (Meta)','Add Pages API to your app','Get Page ID from FB Page settings','Generate a Page Access Token']},
 ];
 
-function SettingsPage({apiKey, setApiKey, platforms, setPlatforms, elevenKey, setElevenKey, pexelsKey, setPexelsKey, bannerUrl, setBannerUrl}) {
+function SettingsPage({apiKey, setApiKey, platforms, setPlatforms, elevenKey, setElevenKey, pexelsKey, setPexelsKey, unsplashKey, setUnsplashKey, bannerUrl, setBannerUrl}) {
   const [lk, setLk] = useState(apiKey);
   const [lp, setLp] = useState(platforms);
   const [saved, setSaved] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [lEleven, setLEleven] = useState(elevenKey);
   const [lPexels, setLPexels] = useState(pexelsKey);
+  const [lUnsplash, setLUnsplash] = useState(unsplashKey);
   const bannerRef = useRef(null);
 
-  const save = () => { setApiKey(lk); setPlatforms(lp); setElevenKey(lEleven); setPexelsKey(lPexels); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const save = () => { setApiKey(lk); setPlatforms(lp); setElevenKey(lEleven); setPexelsKey(lPexels); setUnsplashKey(lUnsplash); setSaved(true); setTimeout(()=>setSaved(false),2000); };
   const conn = (p) => p.fields.every(f => lp[f.k]&&lp[f.k].trim());
 
   const handleBannerUpload = (e) => {
@@ -1414,6 +1485,15 @@ function SettingsPage({apiKey, setApiKey, platforms, setPlatforms, elevenKey, se
         </div>
         <div className="ib" style={{marginBottom:12}}>Get key at <a href="https://pexels.com/api" target="_blank" rel="noopener noreferrer" style={{color:'var(--acc)'}}>pexels.com/api</a> → Your API Key (free)</div>
         <input className="inp" type="password" placeholder="Your Pexels API key" value={lPexels} onChange={e=>setLPexels(e.target.value)}/>
+      </div>
+
+      <div className="card" style={{marginBottom:24}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div><div style={{fontFamily:'Playfair Display,serif',fontSize:18,marginBottom:4}}>Unsplash API Key</div><div style={{fontSize:13,color:'var(--ts)'}}>Higher quality travel photos alongside Pexels.</div></div>
+          {lUnsplash?<span className="stbd sap">✓ Connected</span>:<span className="stbd spn">Not Set</span>}
+        </div>
+        <div className="ib" style={{marginBottom:12}}>Get your free key at <a href="https://unsplash.com/developers" target="_blank" rel="noopener noreferrer" style={{color:'var(--acc)'}}>unsplash.com/developers</a> → New Application → copy the <strong>Access Key</strong></div>
+        <input className="inp" type="password" placeholder="Your Unsplash Access Key" value={lUnsplash} onChange={e=>setLUnsplash(e.target.value)}/>
       </div>
 
       <button className="btn bp blg" onClick={save}>{saved?'✓ All Settings Saved!':'Save All Settings'}</button>
